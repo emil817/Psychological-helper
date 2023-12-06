@@ -1,0 +1,180 @@
+import numpy as np
+from gigachat import GigaChat
+from joblib import dump, load
+import telebot
+from telebot import types
+import requests
+import os
+import uuid
+
+from joblib import dump, load
+import warnings
+warnings.filterwarnings("ignore")
+
+from Quastionnaries import Questionnaire_agression, Questionnaire_anxiety, Questionnaire_depression
+from Quastionnaries import Calculate_func, Questionnaire
+from TTS import convertTTS, VoiceMessage
+from Tokens import TelebotToken, GigaChatToken
+
+vectoriser = load('Vectoriser.joblib')
+clf2 = load('Model.joblib')
+token = TelebotToken
+
+giga = GigaChat(credentials=GigaChatToken, scope="GIGACHAT_API_PERS", verify_ssl_certs=False)
+
+DB = load('DB.joblib')
+
+def analyse_message(S):
+  vectorised = vectoriser.transform([S])
+  pred = clf2.predict(vectorised)
+  return pred[0]
+
+
+# DB = [{user: number_of_depressed_messages}, {user: mesaages_history}, {user: test}, {user: Questionnaire Object}]
+# DB[2] = {user: test};  Tests: 0 - Agression, 1 - Anxiety, 2 - Depression
+# DB[3] Test_obj = {}
+
+
+Callbacks = {
+    '1_agres': [0, 1], '0_agres': [0, 0],
+    '0_anx': [1, 0], '1_anx': [1, 1], '2_anx': [1, 2], '3_anx': [1, 3],
+    '0_depress': [2, 0], '1_depress': [2, 1], '2_depress': [2, 2], '3_depress': [2, 3]             
+}
+markupStart = types.InlineKeyboardMarkup(row_width=2)
+markupStart.add(types.InlineKeyboardButton('Да', callback_data='1_start_test'), types.InlineKeyboardButton('Нет', callback_data='0_start_test'))
+markupAgression = types.InlineKeyboardMarkup(row_width=2)
+markupAgression.add(types.InlineKeyboardButton('Да', callback_data='1_agres'), types.InlineKeyboardButton('Нет', callback_data='0_agres'))
+markupAnxiety = types.InlineKeyboardMarkup(row_width=4)
+markupAnxiety.add(types.InlineKeyboardButton('0', callback_data='0_anx'), types.InlineKeyboardButton('1', callback_data='1_anx'),
+                  types.InlineKeyboardButton('2', callback_data='2_anx'), types.InlineKeyboardButton('3', callback_data='3_anx'))
+markupDepression = types.InlineKeyboardMarkup(row_width=4)
+markupDepression.add(types.InlineKeyboardButton('0', callback_data='0_depress'), types.InlineKeyboardButton('1', callback_data='1_depress'),
+                  types.InlineKeyboardButton('2', callback_data='2_depress'), types.InlineKeyboardButton('3', callback_data='3_depress'))
+
+Marcups = {-1: markupStart, 0: markupAgression, 1: markupAnxiety, 2: markupDepression}
+
+
+
+bot=telebot.TeleBot(token)
+startKBoard = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+startKBoard.add(types.KeyboardButton(text="Тест на агрессию"), types.KeyboardButton(text="Тест на тревожность"), types.KeyboardButton(text="Тест на депрессию"))
+
+@bot.message_handler(commands=["start"])
+def start(m, res=False):
+    bot.send_message(m.chat.id, 'Привет, я бот для общения, можешь поговорить со мной', reply_markup=startKBoard)
+
+@bot.message_handler (content_types = ['text'])
+def Text (Message):
+    if Message.text == "Тест на агрессию" or Message.text == "Тест на тревожность" or Message.text == "Тест на депрессию":
+        if Message.text == "Тест на агрессию":
+            DB[2][Message.chat.id] = 0
+            DB[3][Message.chat.id] = Questionnaire(Questionnaire_agression)
+            bot.send_message(Message.chat.id, "Сейчас я буду скидывать ряд положений, касающихся Вашего поведения. Если они соответствуют имеющейся у Вас тенденции реагировать именно так нажимайте 'Да', если нет, то - 'Нет'")
+        elif Message.text == "Тест на тревожность":
+            DB[2][Message.chat.id] = 1
+            DB[3][Message.chat.id] = Questionnaire(Questionnaire_anxiety)
+            bot.send_message(Message.chat.id, "Сейчас я буду скидывать список общих симптомов тревоги. Пожалуйста, прочтите внимательно описание симптома и отметьте, насколько сильно он вас беспокоил в течение последней недели, включая сегодняшний день, по шкале:\n0 - Совсем не беспокоит\n1 - Слегка. Не слишком меня беспокоит\n2 - Умеренно. Это было неприятно, но я могу это перенести\n3 - Очень сильно. Я с трудом могу это переносить.")
+        elif Message.text == "Тест на депрессию":
+            DB[2][Message.chat.id] = 2
+            DB[3][Message.chat.id] = Questionnaire(Questionnaire_depression)
+            bot.send_message(Message.chat.id, "Сейчас я буду скидывать группы утверждений. Внимательно прочитайте каждую группу утверждений. Затем определите в каждой группе одно утверждение, которое лучше всего соответствует тому, как Вы себя чувствовали НА ЭТОЙ НЕДЕЛЕ И СЕГОДНЯ. Нажмите на кнопку с номером этого утверждения. Прежде, чем сделать свой выбор, убедитесь, что Вы прочли все утверждения в каждой группе.")
+        text = DB[3][Message.chat.id].first_question()
+        bot.send_message(Message.chat.id, text, reply_markup=Marcups[DB[2][Message.chat.id]])
+        dump(DB, 'DB.joblib')
+    else:
+        pred = analyse_message(Message.text)
+        
+        if pred == 1:
+            if Message.chat.id in DB[0]:
+                DB[0][Message.chat.id] += 1
+            else:
+                DB[0][Message.chat.id] = 1
+            print(Message.chat.id, DB[0][Message.chat.id])
+        else:
+            if not (Message.chat.id in DB[0]):
+                DB[0][Message.chat.id] = 0
+
+        answer = ""
+        
+        if Message.chat.id in DB[1]:
+            if DB[0][Message.chat.id] % 3 == 0 and DB[0][Message.chat.id] != 0 and pred == 1:
+                answer = "Вы как-то грустно пишите, советую вам обратиться к психологу. "
+                response = giga.chat(f"Подбодри человека, который грустит: {Message.text}")
+                answer += response.choices[0].message.content.replace('''"''', '')
+                bot.send_message(Message.chat.id, answer)
+
+                DB[2][Message.chat.id] = 2
+                bot.send_message(Message.chat.id, 'Не хотите пройти кототкий тест?', reply_markup = Marcups[-1])
+                
+            else:
+                response = giga.chat(f"Ответь позитивно на сообщение: {Message.text}")
+                answer = response.choices[0].message.content.replace('''"''', '')
+                #print(response.choices[0].message.content)#
+                bot.send_message(Message.chat.id, answer)
+        else:
+            response = giga.chat(f"Ответь позитивно на сообщение: {Message.text}")
+            answer = response.choices[0].message.content.replace('''"''', '')
+            #print(response.choices[0].message.content)#
+            bot.send_message(Message.chat.id, answer)
+
+        if Message.chat.id in DB[1]:
+            DB[1][Message.chat.id] += [Message.text, answer]
+        else:
+            DB[1][Message.chat.id] = [Message.text, answer]
+        
+        dump(DB, 'DB.joblib')
+
+#Questionnaires zone \\\|||///
+
+@bot.callback_query_handler(func=lambda call:True)
+def callback(call):
+    global test_pos, Test_answ
+    if call.message:
+        if call.data == '1_start_test':
+            if DB[2][call.message.chat.id] == 0:
+                DB[3][call.message.chat.id] = Questionnaire(Questionnaire_agression)
+                bot.send_message(call.message.chat.id, "Сейчас я буду скидывать ряд положений, касающихся Вашего поведения. Если они соответствуют имеющейся у Вас тенденции реагировать именно так нажимайте 'Да', если нет, то - 'Нет'")
+            elif DB[2][call.message.chat.id] == 1:
+                DB[3][call.message.chat.id] = Questionnaire(Questionnaire_anxiety)
+                bot.send_message(call.message.chat.id, "Сейчас я буду скидывать список общих симптомов тревоги. Пожалуйста, прочтите внимательно описание симптома и отметьте, насколько сильно он вас беспокоил в течение последней недели, включая сегодняшний день, по шкале:\n0 - Совсем не беспокоит\n1 - Слегка. Не слишком меня беспокоит\n2 - Умеренно. Это было неприятно, но я могу это перенести\n3 - Очень сильно. Я с трудом могу это переносить.")
+            elif DB[2][call.message.chat.id] == 2:
+                DB[3][call.message.chat.id] = Questionnaire(Questionnaire_depression)
+                bot.send_message(call.message.chat.id, "Сейчас я буду скидывать группы утверждений. Внимательно прочитайте каждую группу утверждений. Затем определите в каждой группе одно утверждение, которое лучше всего соответствует тому, как Вы себя чувствовали НА ЭТОЙ НЕДЕЛЕ И СЕГОДНЯ. Нажмите на кнопку с номером этого утверждения. Прежде, чем сделать свой выбор, убедитесь, что Вы прочли все утверждения в каждой группе.")
+            
+            text = DB[3][call.message.chat.id].first_question()
+            bot.send_message(call.message.chat.id, text, reply_markup=Marcups[DB[2][call.message.chat.id]])
+        
+        elif call.data == '0_start_test':
+            bot.send_message(call.message.chat.id, 'Ну ладно')
+
+        elif Callbacks[call.data][0] in range(0, 3):
+            text = DB[3][call.message.chat.id].next_question(Callbacks[call.data][1])
+            if text == 0:
+                text = Calculate_func[Callbacks[call.data][0]](DB[3][call.message.chat.id].get_answers())[0]
+                bot.send_message(call.message.chat.id, text)
+            else:
+                bot.send_message(call.message.chat.id, text, reply_markup=Marcups[Callbacks[call.data][0]])
+
+    bot.answer_callback_query(call.id)
+
+@bot.message_handler(content_types=['voice'])
+def voice_processing(message):
+    filename = str(uuid.uuid4())
+    file_name_full="content/"+filename+".ogg"
+    file_name_full_converted="content/"+filename+".wav"
+    file_info = bot.get_file(message.voice.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+    with open(file_name_full, 'wb') as new_file:
+        new_file.write(downloaded_file)
+    os.system("ffmpeg -i "+file_name_full+"  "+file_name_full_converted)
+    text=convertTTS(file_name_full_converted)
+    os.remove(file_name_full)
+    os.remove(file_name_full_converted)
+    voice_message = VoiceMessage(text[:150], message.chat.id)
+    Text(voice_message)
+
+while True:
+    try:
+        bot.polling(none_stop=True, interval=0)
+    except requests.exceptions.ReadTimeout:
+        continue
