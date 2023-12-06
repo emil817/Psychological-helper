@@ -146,3 +146,7 @@ def calculate_anxiety_test(answers):
     return text_result, s
 
 Calculate_func = [calculate_agression_test, calculate_anxiety_test, calcualte_depression_test]
+
+Agression_list = ["переживаю тревожусь волнуюсь беспокоюсь тоскую переживания тревога волнение беспокойство тоска"]
+Anxiety_list = ["агрессия бесит раздражает сержусь кричу ору"]
+Depression_list = ["тоска печаль грусть нет смысла незачем бессмысленно грущу смысл зачем"]
