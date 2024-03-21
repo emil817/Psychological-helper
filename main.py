@@ -1,8 +1,6 @@
 import numpy as np
-import numpy.linalg as LA
 from gigachat import GigaChat
-import telebot
-from telebot import types
+from telebot import TeleBot, types
 import requests
 import os
 import uuid
@@ -10,16 +8,25 @@ import json
 from joblib import load
 import warnings
 
-warnings.filterwarnings("ignore")
-
 from Quastionnaries import Questionnaire_agression, Questionnaire_anxiety, Questionnaire_depression
 from Quastionnaries import Calculate_func, Questionnaire, Agression_list, Anxiety_list, Depression_list
 from TTS import convertTTS, VoiceMessage
 from Tokens import TelebotToken, GigaChatToken
 
+warnings.filterwarnings("ignore")
+
 vectoriser = load('Vectoriser.joblib')
 clf2 = load('Model.joblib')
 count_vectoriser = load('CountVectoriser.joblib')
+
+def analyse_message(text):
+    vectorised = vectoriser.transform([text])
+    pred = clf2.predict(vectorised)
+    return pred[0]
+
+if not os.path.exists("content"):
+    os.makedirs("content")
+
 token = TelebotToken
 giga = GigaChat(credentials=GigaChatToken, scope="GIGACHAT_API_PERS", verify_ssl_certs=False)
 
@@ -27,18 +34,11 @@ with open("DB.json") as f:
     S = f.read()
 DB = json.loads(S)
 
-
-def analyse_message(S):
-    vectorised = vectoriser.transform([S])
-    pred = clf2.predict(vectorised)
-    return pred[0]
-
-
-# DB = [{user: number_of_depressed_messages}, {user: mesaages_history}, {user: test}, {user: Questionnaire Object}]
+# DB = [{user: number_of_depressed_messages}, {user: mesaages_history}, {user: test}]
 # DB[2] = {user: test};  Tests: 0 - Agression, 1 - Anxiety, 2 - Depression
 Test_obj = {}
 
-
+# Markups for tests
 Callbacks = {
     '1_agres': [0, 1], '0_agres': [0, 0],
     '0_anx': [1, 0], '1_anx': [1, 1], '2_anx': [1, 2], '3_anx': [1, 3],
@@ -54,16 +54,15 @@ markupAnxiety.add(types.InlineKeyboardButton('0', callback_data='0_anx'), types.
 markupDepression = types.InlineKeyboardMarkup(row_width=4)
 markupDepression.add(types.InlineKeyboardButton('0', callback_data='0_depress'), types.InlineKeyboardButton('1', callback_data='1_depress'),
                   types.InlineKeyboardButton('2', callback_data='2_depress'), types.InlineKeyboardButton('3', callback_data='3_depress'))
-
 Marcups = {-1: markupStart, 0: markupAgression, 1: markupAnxiety, 2: markupDepression}
 
 
-
-bot=telebot.TeleBot(token)
+# Starting telegram bot
+bot = TeleBot(token)
 startKBoard = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
 startKBoard.add(types.KeyboardButton(text="Тест на агрессию"), types.KeyboardButton(text="Тест на тревожность"), types.KeyboardButton(text="Тест на депрессию"))
 
-cx = lambda a, b : round(np.inner(a, b)/(LA.norm(a)*LA.norm(b)), 3)
+cx = lambda a, b : round(np.inner(a, b)/(np.linalg.norm(a)*np.linalg.norm(b)), 3)
 
 def find_nearest_theme(text):
     agr = cx(count_vectoriser.transform([text]).toarray().tolist()[0], count_vectoriser.transform(Agression_list).toarray().tolist()[0])
@@ -147,7 +146,7 @@ def Text (Message):
         with open("DB.json", 'w') as f:
             print(S, file=f)
 
-#Questionnaires zone \\\|||///
+# Callback for tests
 
 @bot.callback_query_handler(func=lambda call:True)
 def callback(call):

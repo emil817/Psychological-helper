@@ -1,5 +1,6 @@
 import random
 
+#This is file with Questionnaire class and functions for calulating results
 
 class Questionnaire():
     def __init__(self, questions_dict) -> None:

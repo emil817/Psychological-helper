@@ -1,5 +1,7 @@
 import speech_recognition as sr
 
+#This is file with fuction for converting voice messages to text
+
 def convertTTS(filename):
     r = sr.Recognizer()
     with sr.AudioFile(filename) as source:
