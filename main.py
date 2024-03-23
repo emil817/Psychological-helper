@@ -4,7 +4,6 @@ from telebot import TeleBot, types
 import requests
 import os
 import uuid
-import json
 from joblib import load
 import warnings
 
@@ -12,6 +11,7 @@ from Quastionnaries import Questionnaire_agression, Questionnaire_anxiety, Quest
 from Quastionnaries import Calculate_func, Questionnaire, Agression_list, Anxiety_list, Depression_list
 from TTS import convertTTS, VoiceMessage
 from Tokens import TelebotToken, GigaChatToken
+from DB import SQL_DB, User
 
 warnings.filterwarnings("ignore")
 
@@ -19,7 +19,7 @@ vectoriser = load('Vectoriser.joblib')
 clf2 = load('Model.joblib')
 count_vectoriser = load('CountVectoriser.joblib')
 
-def analyse_message(text):
+def analyse_message(text: str) -> np.int64:
     vectorised = vectoriser.transform([text])
     pred = clf2.predict(vectorised)
     return pred[0]
@@ -30,12 +30,8 @@ if not os.path.exists("content"):
 token = TelebotToken
 giga = GigaChat(credentials=GigaChatToken, scope="GIGACHAT_API_PERS", verify_ssl_certs=False)
 
-with open("DB.json") as f:
-    S = f.read()
-DB = json.loads(S)
+db = SQL_DB()
 
-# DB = [{user: number_of_depressed_messages}, {user: mesaages_history}, {user: test}]
-# DB[2] = {user: test};  Tests: 0 - Agression, 1 - Anxiety, 2 - Depression
 Test_obj = {}
 
 # Markups for tests
@@ -83,49 +79,44 @@ def start(m, res=False):
 
 @bot.message_handler (content_types = ['text'])
 def Text (Message):
+    user_data = db.get_user(str(Message.chat.id))
+    if user_data is None:
+        db.insert_user(User(tg_id=str(Message.chat.id), count_depressed_messages=0, messages_history="", test=0))
+        user_data = User(tg_id=str(Message.chat.id), count_depressed_messages=0, messages_history="", test=0)
+    
     if Message.text == "Тест на агрессию" or Message.text == "Тест на тревожность" or Message.text == "Тест на депрессию":
         if Message.text == "Тест на агрессию":
-            DB[2][str(Message.chat.id)] = 0
+            user_data.test = 0
             Test_obj[str(Message.chat.id)] = Questionnaire(Questionnaire_agression)
             bot.send_message(Message.chat.id, "Сейчас я буду скидывать ряд положений, касающихся Вашего поведения. Если они соответствуют имеющейся у Вас тенденции реагировать именно так нажимайте 'Да', если нет, то - 'Нет'")
         elif Message.text == "Тест на тревожность":
-            DB[2][str(Message.chat.id)] = 1
+            user_data.test = 1
             Test_obj[str(Message.chat.id)] = Questionnaire(Questionnaire_anxiety)
             bot.send_message(Message.chat.id, "Сейчас я буду скидывать список общих симптомов тревоги. Пожалуйста, прочтите внимательно описание симптома и отметьте, насколько сильно он вас беспокоил в течение последней недели, включая сегодняшний день, по шкале:\n0 - Совсем не беспокоит\n1 - Слегка. Не слишком меня беспокоит\n2 - Умеренно. Это было неприятно, но я могу это перенести\n3 - Очень сильно. Я с трудом могу это переносить.")
         elif Message.text == "Тест на депрессию":
-            DB[2][str(Message.chat.id)] = 2
+            user_data.test = 2
             Test_obj[str(Message.chat.id)] = Questionnaire(Questionnaire_depression)
             bot.send_message(Message.chat.id, "Сейчас я буду скидывать группы утверждений. Внимательно прочитайте каждую группу утверждений. Затем определите в каждой группе одно утверждение, которое лучше всего соответствует тому, как Вы себя чувствовали НА ЭТОЙ НЕДЕЛЕ И СЕГОДНЯ. Нажмите на кнопку с номером этого утверждения. Прежде, чем сделать свой выбор, убедитесь, что Вы прочли все утверждения в каждой группе.")
         text = Test_obj[str(Message.chat.id)].first_question()
-        bot.send_message(Message.chat.id, text, reply_markup=Marcups[DB[2][str(Message.chat.id)]])
-        S = json.dumps(DB)
-        with open("DB.json", 'w') as f:
-            print(S, file=f)
+        bot.send_message(Message.chat.id, text, reply_markup=Marcups[user_data.test])
     else:
         pred = analyse_message(Message.text)
         
         if pred == 1:
-            if str(Message.chat.id) in DB[0]:
-                DB[0][str(Message.chat.id)] += 1
-            else:
-                DB[0][str(Message.chat.id)] = 1
-            print(Message.chat.id, DB[0][str(Message.chat.id)])
-        else:
-            if not (str(Message.chat.id) in DB[0]):
-                DB[0][str(Message.chat.id)] = 0
+            user_data.count_depressed_messages += 1
+            print(Message.chat.id, user_data.count_depressed_messages)
 
         answer = ""
         
-        if str(Message.chat.id) in DB[1]:
-            if DB[0][str(Message.chat.id)] % 3 == 0 and DB[0][str(Message.chat.id)] != 0 and pred == 1:
+        if user_data.messages_history != "":
+            if user_data.count_depressed_messages % 3 == 0 and user_data.count_depressed_messages != 0 and pred == 1:
                 answer = "Вы как-то грустно пишите, советую вам обратиться к психологу. "
                 response = giga.chat(f"Подбодри человека, который грустит, как будто ты мужчина: {Message.text}")
                 answer += response.choices[0].message.content.replace('''"''', '')
                 bot.send_message(Message.chat.id, answer)
 
-                DB[2][str(Message.chat.id)] = find_nearest_theme(Message.text)
+                user_data.test = find_nearest_theme(Message.text)
                 bot.send_message(Message.chat.id, 'Не хотите пройти кототкий тест?', reply_markup = Marcups[-1])
-                
             else:
                 response = giga.chat(f"Ответь позитивно на сообщение, как будто ты мужчина: {Message.text}")
                 answer = response.choices[0].message.content.replace('''"''', '')
@@ -137,14 +128,9 @@ def Text (Message):
             #print(response.choices[0].message.content)#
             bot.send_message(Message.chat.id, answer)
 
-        if str(Message.chat.id) in DB[1]:
-            DB[1][str(Message.chat.id)] += [Message.text, answer]
-        else:
-            DB[1][str(Message.chat.id)] = [Message.text, answer]
-        
-        S = json.dumps(DB)
-        with open("DB.json", 'w') as f:
-            print(S, file=f)
+        user_data.messages_history += Message.text + ";" + answer + ";"
+    
+    db.update_user(user_data)
 
 # Callback for tests
 
@@ -152,19 +138,21 @@ def Text (Message):
 def callback(call):
     global test_pos, Test_answ
     if call.message:
+        user_data = db.get_user(str(call.message.chat.id))
+
         if call.data == '1_start_test':
-            if DB[2][str(call.message.chat.id)] == 0:
+            if user_data.test == 0:
                 Test_obj[str(call.message.chat.id)] = Questionnaire(Questionnaire_agression)
                 bot.send_message(call.message.chat.id, "Сейчас я буду скидывать ряд положений, касающихся Вашего поведения. Если они соответствуют имеющейся у Вас тенденции реагировать именно так нажимайте 'Да', если нет, то - 'Нет'")
-            elif DB[2][str(call.message.chat.id)] == 1:
+            elif user_data.test == 1:
                 Test_obj[str(call.message.chat.id)] = Questionnaire(Questionnaire_anxiety)
                 bot.send_message(call.message.chat.id, "Сейчас я буду скидывать список общих симптомов тревоги. Пожалуйста, прочтите внимательно описание симптома и отметьте, насколько сильно он вас беспокоил в течение последней недели, включая сегодняшний день, по шкале:\n0 - Совсем не беспокоит\n1 - Слегка. Не слишком меня беспокоит\n2 - Умеренно. Это было неприятно, но я могу это перенести\n3 - Очень сильно. Я с трудом могу это переносить.")
-            elif DB[2][str(call.message.chat.id)] == 2:
+            elif user_data.test == 2:
                 Test_obj[str(call.message.chat.id)] = Questionnaire(Questionnaire_depression)
                 bot.send_message(call.message.chat.id, "Сейчас я буду скидывать группы утверждений. Внимательно прочитайте каждую группу утверждений. Затем определите в каждой группе одно утверждение, которое лучше всего соответствует тому, как Вы себя чувствовали НА ЭТОЙ НЕДЕЛЕ И СЕГОДНЯ. Нажмите на кнопку с номером этого утверждения. Прежде, чем сделать свой выбор, убедитесь, что Вы прочли все утверждения в каждой группе.")
             
             text = Test_obj[str(call.message.chat.id)].first_question()
-            bot.send_message(call.message.chat.id, text, reply_markup=Marcups[DB[2][str(call.message.chat.id)]])
+            bot.send_message(call.message.chat.id, text, reply_markup=Marcups[user_data.test])
         
         elif call.data == '0_start_test':
             bot.send_message(call.message.chat.id, 'Ну ладно')

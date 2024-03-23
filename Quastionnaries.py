@@ -111,6 +111,8 @@ def calculate_agression_test(answers):
     text_result = ""
     if autoagression > geteroagression:
         text_result = 'У вас преобладает аутоагрессия'
+    elif autoagression > geteroagression + 7:
+        text_result = 'У вас значительно преобладает аутоагрессия, обратитесь к специалисту'
     elif autoagression < geteroagression:
         text_result = 'У вас преобладает гетероагрессия'
     else:
