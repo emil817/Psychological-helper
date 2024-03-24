@@ -3,15 +3,14 @@ import speech_recognition as sr
 #This is file with fuction for converting voice messages to text
 
 def convertTTS(filename):
-    r = sr.Recognizer()
+    recogniser = sr.Recognizer()
     with sr.AudioFile(filename) as source:
-        audio_text = r.listen(source)
+        audio_text = recogniser.listen(source)
         try:
-            text = r.recognize_google(audio_text,language='ru_RU')
+            text = recogniser.recognize_google(audio_text, language='ru_RU')
             return text
         except:
             pass
-
 
 class VoiceMessage():
     def __init__(self, text, id) -> None:
