@@ -114,9 +114,9 @@ def calculate_agression_test(answers):
     elif autoagression > geteroagression + 7:
         text_result = 'У вас значительно преобладает аутоагрессия, обратитесь к специалисту'
     elif autoagression < geteroagression:
-        text_result = 'У вас преобладает гетероагрессия'
+        text_result = 'У вас преобладает внешняя агрессия'
     else:
-        text_result = 'У вас одинаковый уровень гетероагрессии и аутоагрессии'
+        text_result = 'У вас одинаковый уровень внешней агрессии и аутоагрессии'
     
     return text_result, autoagression, geteroagression
 
@@ -130,9 +130,9 @@ def calcualte_depression_test(answers):
     elif s <= 19:
         text_result = "Возможно у вас депрессия, обратитесь к специалисту"  # Умеренная депрессия
     elif s <= 29:
-        text_result = "Возможно у вас депрессия, обратитесь к специалисту"  # Выраженная депрессия (средней тяжести)
+        text_result = "Возможно у вас депрессия, обязательно обратитесь к специалисту"  # Выраженная депрессия (средней тяжести)
     else:
-        text_result = "Возможно у вас депрессия, обратитесь к специалисту"  # Тяжелая депрессия
+        text_result = "Возможно у вас депрессия, обязательно обратитесь к специалисту"  # Тяжелая депрессия
 
     return text_result, s
 
@@ -140,9 +140,9 @@ def calculate_anxiety_test(answers):
     s = sum(answers)
     text_result = ""
     if s >= 0 and s <= 21:
-        text_result = "У вас низкая тревожность"
+        text_result = "У вас низкий уровень тревожности"
     elif s <= 35:
-        text_result = "У вас средняя тревожность"
+        text_result = "У вас средний уровень тревожности"
     else:
         text_result = "У вас может быть потенциально опасный уровень беспокойства и тревоги, обратитесь к специалисту"
     
