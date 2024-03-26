@@ -19,6 +19,7 @@ vectoriser = load('Models/Vectoriser.joblib')
 clf2 = load('Models/Model.joblib')
 count_vectoriser = load('Models/CountVectoriser.joblib')
 
+
 def analyse_message(text: str) -> np.int64:
     vectorised = vectoriser.transform([text])
     pred = clf2.predict(vectorised)
@@ -37,7 +38,7 @@ Test_obj = {}
 Callbacks = {
     '1_agres': [0, 1], '0_agres': [0, 0],
     '0_anx': [1, 0], '1_anx': [1, 1], '2_anx': [1, 2], '3_anx': [1, 3],
-    '0_depress': [2, 0], '1_depress': [2, 1], '2_depress': [2, 2], '3_depress': [2, 3]             
+    '0_depress': [2, 0], '1_depress': [2, 1], '2_depress': [2, 2], '3_depress': [2, 3]
 }
 markupStart = types.InlineKeyboardMarkup(row_width=2)
 markupStart.add(types.InlineKeyboardButton('Да', callback_data='1_start_test'),
@@ -67,10 +68,14 @@ startKBoard.add(types.KeyboardButton(text="Тест на агрессию"),
 
 cx = lambda a, b : round(np.inner(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)), 3)
 
+
 def find_nearest_theme(text):
-    agr = cx(count_vectoriser.transform([text]).toarray().tolist()[0], count_vectoriser.transform(agression_list).toarray().tolist()[0])
-    anx = cx(count_vectoriser.transform([text]).toarray().tolist()[0], count_vectoriser.transform(anxiety_list).toarray().tolist()[0])
-    depr = cx(count_vectoriser.transform([text]).toarray().tolist()[0], count_vectoriser.transform(depression_list).toarray().tolist()[0])
+    agr = cx(count_vectoriser.transform([text]).toarray().tolist()[0],
+            count_vectoriser.transform(agression_list).toarray().tolist()[0])
+    anx = cx(count_vectoriser.transform([text]).toarray().tolist()[0],
+            count_vectoriser.transform(anxiety_list).toarray().tolist()[0])
+    depr = cx(count_vectoriser.transform([text]).toarray().tolist()[0],
+            count_vectoriser.transform(depression_list).toarray().tolist()[0])
 
     if agr == max(agr, anx, depr):
         return 0
@@ -79,17 +84,19 @@ def find_nearest_theme(text):
     else:
         return 2
 
+
 @bot.message_handler(commands=["start"])
 def start(m, res=False):
-    bot.send_message(m.chat.id, 'Привет, я бот для общения, можешь поговорить со мной', reply_markup=startKBoard)
+    bot.send_message(m.chat.id, 'Привет, я могу общаться, предлагать психологические тесты, помогу определить параметры психического здоровья.', reply_markup=startKBoard)
 
-@bot.message_handler (content_types = ['text'])
-def Text (Message):
+
+@bot.message_handler (content_types=['text'])
+def Text(Message):
     user_data = db.get_user(str(Message.chat.id))
     if user_data is None:
         db.insert_user(User(tg_id=str(Message.chat.id), count_depressed_messages=0, messages_history="", test=0))
         user_data = User(tg_id=str(Message.chat.id), count_depressed_messages=0, messages_history="", test=0)
-    
+
     if Message.text == "Тест на агрессию" or Message.text == "Тест на тревожность" or Message.text == "Тест на депрессию":
         if Message.text == "Тест на агрессию":
             user_data.test = 0
@@ -107,13 +114,13 @@ def Text (Message):
         bot.send_message(Message.chat.id, text, reply_markup=Marcups[user_data.test])
     else:
         pred = analyse_message(Message.text)
-        
+
         if pred == 1:
             user_data.count_depressed_messages += 1
             print(Message.chat.id, user_data.count_depressed_messages)
 
         answer = ""
-        
+
         if user_data.messages_history != "":
             if user_data.count_depressed_messages % 3 == 0 and user_data.count_depressed_messages != 0 and pred == 1:
                 answer = "Вы как-то грустно пишите, советую вам обратиться к психологу. "
@@ -122,7 +129,7 @@ def Text (Message):
                 bot.send_message(Message.chat.id, answer)
 
                 user_data.test = find_nearest_theme(Message.text)
-                bot.send_message(Message.chat.id, 'Не хотите пройти кототкий тест?', reply_markup = Marcups[-1])
+                bot.send_message(Message.chat.id, 'Не хотите пройти кототкий тест?', reply_markup=Marcups[-1])
             else:
                 response = giga.chat(f"Ответь позитивно на сообщение, как будто ты мужчина: {Message.text}")
                 answer = response.choices[0].message.content.replace('''"''', '')
@@ -140,7 +147,8 @@ def Text (Message):
 
 # Callback for tests
 
-@bot.callback_query_handler(func=lambda call:True)
+
+@bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     global test_pos, Test_answ
     if call.message:
@@ -173,6 +181,7 @@ def callback(call):
 
     bot.answer_callback_query(call.id)
 
+
 @bot.message_handler(content_types=['voice'])
 def voice_processing(message):
     filename = str(uuid4())
@@ -188,6 +197,7 @@ def voice_processing(message):
     os.remove(file_name_full_converted)
     voice_message = VoiceMessage(text[:150], str(message.chat.id))
     Text(voice_message)
+
 
 @bot.message_handler(content_types=['sticker'])
 def voice_processing(message):
