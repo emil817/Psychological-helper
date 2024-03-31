@@ -38,7 +38,9 @@ class SQL_DB():
     
     def update_user(self, user_data: User) -> None:
         with self.sessionmaker() as session:
-            session.query(User).filter(User.tg_id == user_data.tg_id).update({'count_depressed_messages': user_data.count_depressed_messages,
+            session.query(User).filter(User.tg_id == user_data.tg_id).update({
+                'count_depressed_messages': user_data.count_depressed_messages,
                 'messages_history': user_data.messages_history,
-                'test': user_data.test})
+                'test': user_data.test
+            })
             session.commit()
